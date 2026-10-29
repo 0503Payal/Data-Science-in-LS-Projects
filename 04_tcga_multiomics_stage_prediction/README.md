@@ -5,7 +5,7 @@ builds machine learning models on RNA-seq and DNA methylation data from The
 Cancer Genome Atlas and tests whether omics features carry stage information
 beyond what clinical variables already provide.
 
-Group project with **Leon Igal Inselberg Barbut**, **Payal Priyadarshini** and
+Main project- **Payal Priyadarshini**, **Leon Igal Inselberg Barbut**, and
 **Renk Asik** (equal contribution), Freie Universität Berlin.
 
 ## Result

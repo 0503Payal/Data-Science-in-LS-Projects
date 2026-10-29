@@ -81,5 +81,9 @@ BreaKHis_v1/histology_slides/breast/{benign,malignant}/SOB/<tumour-type>/<slide>
 The notebooks read the magnification folder (`40X`, `100X`, `200X`, `400X`) and
 derive the label from the path.
 
-> The 400× analysis is reported in `reports/a3_mag400_report.pdf`, but its
-> notebook is not in this repository.
+> The 400× analysis survives only as its write-up,
+> [`reports/a3_mag400_report.pdf`](reports/a3_mag400_report.pdf), and the figure
+> [`reports/magnification_400.png`](reports/magnification_400.png); the notebook
+> itself was lost. The 100× notebook
+> [`notebooks/a3_breakhis_mag100.ipynb`](notebooks/a3_breakhis_mag100.ipynb) runs the
+> same pipeline and reproduces it by pointing at the `400X` folder instead.

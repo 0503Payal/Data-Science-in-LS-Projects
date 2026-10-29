@@ -3,9 +3,6 @@
 Classifying breast tissue biopsies as **benign or malignant** from
 histopathology images, comparing three neural network architectures.
 
-Group project with **Renk Asik**, **Leon Igal Inselberg Barbut** and
-**Payal Priyadarshini** (equal contribution), Freie Universität Berlin.
-
 ## Problem
 
 Breast cancer is among the most common cancers in women, and early, accurate

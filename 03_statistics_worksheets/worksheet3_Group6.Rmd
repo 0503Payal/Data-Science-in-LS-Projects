@@ -1,0 +1,263 @@
+---
+title: "Worksheet 3"
+author: "Leon Igal Inselberg Barbut, Renk Asik, Payal Priyadarshini"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+    latex_engine: xelatex
+---
+
+# Stratification
+
+## Rerun the analysis to test whether the treatment shows any effect
+
+```{r echo=FALSE}
+lung_data_all = read.csv("/Users/payalpriyadarshini/Documents/Data_Science_2nd_sem/DATA/lung_data_all.csv")
+
+# test whether there is a difference in function between the two groups
+# t-test: does the mean of lung function differ by trial arms
+t_test_result <- t.test(Lung.function ~ Trial.arm, data = lung_data_all)
+t_test_result
+```
+
+p-value \< 0.05, so we reject the null hypothesis, that states that the means of both groups are equal.
+
+## Run an analysis stratified by sex
+
+```{r echo=FALSE}
+library(dplyr)
+
+# Male
+t_test_male <- t.test(
+  filter(lung_data_all, Sex == "M", Trial.arm=="Treatment")$Lung.function,
+  filter(lung_data_all, Sex == "M", Trial.arm == "Control")$Lung.function
+)
+# Female
+t_test_female <- t.test(
+  filter(lung_data_all, Sex == "F", Trial.arm=="Treatment")$Lung.function,
+  filter(lung_data_all, Sex == "F", Trial.arm == "Control")$Lung.function
+)
+t_test_male
+t_test_female
+```
+
+Analysis stratified by sex: Both male and female groups have a p-value significantly larger than 0.05.
+
+```{r echo=FALSE}
+library(ggplot2)
+library(dplyr)
+
+# Compute group-wise means
+means <- lung_data_all %>%
+  group_by(Trial.arm, Sex) %>%
+  summarise(mean_value = mean(Lung.function, na.rm = TRUE), .groups = "drop")
+
+# Plot with vertical lines for means
+ggplot(lung_data_all, aes(x = Lung.function, y = Trial.arm, fill = Sex)) +
+  geom_violin(trim = TRUE, position = position_dodge(width = 0.9)) +
+  geom_vline(data = means,
+             aes(xintercept = mean_value, color = Sex),
+             linetype = "dashed",
+             linewidth = 0.6,
+             show.legend = FALSE) +
+  scale_fill_manual(values = c("M" = "skyblue", "F" = "salmon")) +
+  scale_color_manual(values = c("M" = "blue", "F" = "red")) +
+  labs(
+    x = "Lung Function",
+    y = "Trial Arm",
+    fill = "Sex",
+    title = "Distribution of Lung Function by Trial Arm and Sex with Mean Lines"
+  ) +
+  theme_minimal()
+
+
+```
+
+The distribution of lung function, as depicted by the violin plots, appears to be shifted towards **higher values for male participants in both the treatment and control groups**.
+
+```{r echo=FALSE}
+gender_by_trial <- table(lung_data_all$Sex, lung_data_all$Trial.arm)
+print(gender_by_trial)
+```
+
+When we check the male/female balance in trial arms it is clear that the imbalance is high among trial arms. **Females are overrepresented in the Control group and males are overrepresented in the Treatment group**. Since male lung functionality is higher overall, the imbalance causes higher lung functionality values in the Treatment group. This caused the finding of a misleading significant p-value in the non-stratified analysis. But after our stratified analysis we have good evidence to believe that the lung functionality between trial arms doesn't differ significantly.
+
+This analysis underlines the importance of balance among groups.
+
+# Confounders
+
+```{r echo=FALSE}
+# Generate Data
+N = 5000
+
+w <- 1 + rnorm(N)
+x_0 <- rnorm(N)
+y_0 <- rnorm(N)
+x <- x_0 + w
+y <- y_0 - w
+
+# Plot distributions (AI used)
+library(ggplot2)
+library(dplyr)
+
+# Combine the two vectors into a single data frame
+df1 <- data.frame(value = x, group = "x")
+df2 <- data.frame(value = y, group = "y")
+combined_df <- bind_rows(df1, df2)
+
+# Calculate the means
+mean_x <- mean(x)
+mean_y <- mean(y)
+
+ggplot(combined_df, aes(x = value, fill = group)) +
+  geom_histogram(alpha = 0.6, position = "identity", binwidth = 0.4) +
+  geom_vline(aes(xintercept = mean_x, color = "x_mean"),
+             linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = mean_y, color = "y_mean"),
+             linetype = "dashed", size = 1) +
+  scale_color_manual(name = "Mean",
+                     values = c("x_mean" = "blue", "y_mean" = "red"),
+                     labels = c(paste("Mean of x =", round(mean_x, 2)),
+                                paste("Mean of y =", round(mean_y, 2)))) +
+  labs(title = "Distribution Comparison with Means",
+       x = "Values",
+       y = "Frequency",
+       fill = "Group") +
+  scale_fill_manual(values = c("x" = "skyblue", "y" = "salmon")) +
+  theme_minimal()
+```
+
+Both **x and y are normal distributed**.
+
+-   x: Since w and x_0 are both normal distributed and independent, the mean of x (w + x_0) is the sum of their means, so **mean(x) = 1 + 0 = 1**; also the variance of x is the sum of their variances, so **var(x) = 1 + 1 = 2**.
+
+-   y: y = y0 - w. So, **mean(y) = 0 - 1 = -1**.$$
+    Var(y) = Var(y_0 + (-1)w) = Var(y_0) + (-1)^2Var(w) = 1 + 1 = 2
+    $$
+
+```{r echo=FALSE}
+# Compute t-test between x and y
+t_test_xy_result <- t.test(x, y, var.equal = TRUE)
+t_test_xy_result
+```
+
+p-value is very low, which suggests that the means are different. This was expected, since we shift the original distributions with mean of 0 to opposite sides.
+
+```{r echo=FALSE}
+signs <- sample(c(-1, 1), length(w), replace = TRUE)
+w_p <- w * signs
+
+x_p <- x_0 + w_p
+y_p <- y_0 - w_p
+
+t_test_signed_result <- t.test(x_p, y_p)
+t_test_signed_result
+```
+
+p-value is not significant, which suggests to keep the hypothesis that the mean of x_p and y_p are the same.
+
+Here, we randomized the sign of the confounder, which caused significant shifts before. This randomization breaks the relationship between x and y that w originally introduced.
+
+In the first case, adding w to x_0 and subtracting it from y0 caused a negative correlation between x and y, even though they were actually independent. **By randomizing the sign of w, we get rid of this confounding effect. Any bias in a direction is cancelled out by the randomization of signs.**
+
+# Simple linear regression
+
+```{r echo=TRUE}
+choco_data <- read.csv("/Users/payalpriyadarshini/Documents/Data_Science_2nd_sem/DATA/chocolate.csv")
+
+lm_fit <- lm(Nobel.prizes.per.capita..scaled.by.10.million. ~ Per.capita.chocolate.consumption..kg., choco_data)
+summary(lm_fit)
+
+```
+
+Independent Variable (x): Chocolate consumption per capita Dependent Variable (y): Nobel prites per capita
+
+```{r echo=FALSE}
+# Scatterplot
+library(countrycode)
+choco_data$iso2 <- tolower(countrycode(choco_data$Country, 
+                                       origin = "country.name", 
+                                       destination = "iso2c"))
+
+library(ggflags)
+
+ggplot(choco_data, aes(x = Per.capita.chocolate.consumption..kg., 
+                       y = Nobel.prizes.per.capita..scaled.by.10.million.)) +
+  geom_point(size = 3, alpha = 0.3) +
+  geom_flag(aes(country = iso2), size = 6) +  # AI
+  labs(
+    x = "Per Capita Chocolate Consumption (kg)",
+    y = "Nobel Prizes per 10 Million People",
+    title = "Chocolate Consumption vs. Nobel Prizes",
+  ) +
+  theme_minimal()
+```
+
+```{r echo=FALSE}
+intercept <- lm_fit$coefficients[1]
+slope <- lm_fit$coefficients[2]
+r2 <- summary(lm_fit)$r.squared
+cat("Intercept: ", intercept, "\nSlope: ", slope, "\nR2: ", r2)
+
+# Regression Line with geom_smooth
+ggplot(choco_data, aes(x = Per.capita.chocolate.consumption..kg., 
+                       y = Nobel.prizes.per.capita..scaled.by.10.million.)) +
+  geom_point(color = "darkblue") +
+  geom_flag(aes(country = iso2), size = 6) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Regression Line: Nobel Prizes vs Chocolate Consumption (geom_smooth)") +
+  theme_minimal()
+
+# Regression Line Manual
+ggplot(choco_data, aes(x = Per.capita.chocolate.consumption..kg., 
+                       y = Nobel.prizes.per.capita..scaled.by.10.million.)) +
+  geom_point(color = "darkblue") +
+  geom_flag(aes(country = iso2), size = 6) +
+  geom_abline(intercept = intercept, slope = slope, color = "red", linewidth=0.9) +
+  labs(title = "Manual Regression Line: Nobel Prizes vs Chocolate Consumption") +
+  theme_minimal()
+```
+
+```{r echo=FALSE}
+# Check if the assumptions of your model are fulfilled with visualisations
+library(ggfortify)
+autoplot(lm_fit, which = 2) # Q-Q-Plot
+```
+
+<br> Interpretation of Q-Q-Plot: We want to check the assumption that residuals are normally distributed. Since the data points fall approximately on the 45-degree line, we interpret that residuals are somewhat normal distributed.
+
+# Review questions
+
+You conduct a study to test if there is a difference in blood pressure in young adults who consume high amounts of alcohol regularly compared to a control group that consumes little to no alcohol. You assigned 20 people to each group. The data you obtain from the study shows that the members of the group consuming high-amounts of alcohol have on average a higher blood pressure compared to the control group (p-value \<0.05). But you are a bit worried, because you notice that a lot more people in the high alcohol consumption group are also smokers and you suspect that smoking habit may have an effect on blood pressure. You do a second study with fresh people all non-smokers and your data shows now that the group consuming high-amounts of alcohol has on average a significantly lower blood pressure compared to the control group. When you look at the data again, you notice that more obese people are in the control group than the high alcohol consumption group. You decide to analyse the data separately for obese and non-obese people. You get a significant p-value for both subgroups, but this time both subgroups indicate a lower blood pressure in the control group.
+
+1.  Is it a reasonable choice to use the chi square test to analyse your data? If not, what other test would you chose?
+
+    It is not reasonable to choose chi-square test because the data here is numeric and categorical. We can prefer using t-test or Multiple Regression.
+
+2.  You want to do a power analysis before you start the study. What quantities do you need to know or estimate to do this?
+
+    Significant threshold, effect size, Standard deviation, sample size and test type.
+
+3.  Your power analysis shows a rather weak power. What factor is the easiest to change to increase the power?
+
+    Sample size is easiest to change, i.e., increasing sample size increases statistical power.
+
+4.  If you put an equal amount of female/male participants in the high/low group this can be described as blocking. TRUE
+
+5.  Since you have many people in your study, it is necessary to correct for multiple testing. FALSE
+
+6.  In a good experimental design you only randomise background effects that you cannot block. TRUE
+
+7.  What term describes the role of "smoking habit" in your first study?
+
+    Confounding variable. Smoking is potentially changing the true effect
+
+8.  Explain the contradictory results of your second study.
+
+    The result of the second study was that the results indicated high alcohol consumption seemed to lower blood pressure. But this was due to the control group had more obese people and obesity is associated with higher blood pressure. So obesity was a confounding variable.
+
+9.  It was not necessary to do the second study, because the first study already showed the effect of alcohol consumption on blood pressure. FALSE
+
+10. Your second study is proof that regular consumption of high amounts of alcohol increases blood pressure. FALSE (Evidence not proof)

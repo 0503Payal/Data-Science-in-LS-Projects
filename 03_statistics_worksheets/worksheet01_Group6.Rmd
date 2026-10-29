@@ -1,0 +1,267 @@
+---
+title: "Worksheet 1"
+author: "Payal Priyadarshini, Leon Igal Inselberg Barbut, Renk Asik"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+    latex_engine: xelatex
+---
+
+# T-test
+
+## The t-test assumes normally distributed data. For an increasing number of samples N = {5,10,20,50,100}, sample from each of these distributions:
+
+```{r setup}
+set.seed(42)
+library(ggplot2)
+sample_sizes <- c(5,10,20,50,100)
+n_reps <- 1000
+alpha <- 0.05
+results <- list()
+
+```
+
+working on t test, next chunk sets distributive functions
+
+```{r dist}
+uniform_cont <- function(n){
+  runif(n, -1, 1) 
+}
+students_t <- function(n){
+  rt(n, df=1)
+}
+uniform_discrete <- function(n){
+  sample(c(-1, 1), size = n, replace = TRUE)
+}
+```
+
+1.  continuous uniform distribution in [-1, 1]
+2.  Student-t Distribution (ν = 1)
+3.  Discrete Uniform Distribution {−1, 1}
+
+```{r dataframe}
+# Initialize a data frame to store all p-values
+all_pvals <- data.frame()
+
+for (n in sample_sizes) {
+  for (i in 1:n_reps) {
+    # Sample and Perform two-sided t-tests, mean=0
+    uc_sample <- uniform_cont(n)
+    p_uc <- t.test(uc_sample, mu = 0)$p.value
+    
+    st_sample <- students_t(n)
+    p_st <- t.test(st_sample, mu = 0)$p.value
+    
+    # Unif discrete with resampling if t-test fails
+    success <- FALSE
+    while (!success) {
+      ud_sample <- uniform_discrete(n)
+      test_result <- try(t.test(ud_sample, mu = 0), silent = TRUE)
+      if (!inherits(test_result, "try-error")) {
+        p_ud <- test_result$p.value
+        success <- TRUE
+      }
+    }
+    
+    all_pvals <- rbind(all_pvals, data.frame(
+      n = n,
+      rep = i,
+      p_value = p_uc,
+      distribution = "Uniform Continuous"
+    ))
+    all_pvals <- rbind(all_pvals, data.frame(
+      n = n,
+      rep = i,
+      p_value = p_st,
+      distribution = "Student's t"
+    ))
+    all_pvals <- rbind(all_pvals, data.frame(
+      n = n,
+      rep = i,
+      p_value = p_ud,
+      distribution = "Uniform Discrete"
+    ))
+  }
+}
+
+```
+
+Plot 1: P-value distr for sample_size=5
+
+```{r PLOT1}
+library(ggplot2)
+
+pvals_n5 <- subset(all_pvals, n==5)
+ggplot(pvals_n5, aes(x = p_value, fill = distribution)) +
+  geom_histogram(binwidth = 0.05, position = "dodge", color = "black") +
+  geom_vline(xintercept = alpha, color = "red", linetype = "dashed") +
+  facet_wrap(~distribution) +
+  labs(title = "P-value Distribution for n = 5",
+       x = "P-value",
+       y = "Count") +
+  theme_minimal()
+```
+
+Only student's t looks like a uniform distribution between 0 and 1 Count p-values below 0.05 for each distribution
+
+```{r pval}
+library(dplyr)
+significant_ratios <- all_pvals %>%
+  group_by(distribution) %>%
+  summarise(
+    total = n(),
+    below_alpha = sum(p_value < alpha),
+    ratio = below_alpha / total
+  )
+```
+
+**Significant p-value Ratios of Distributions:**
+
+-   Uniform continuous: 287/5000 = 0.0574 S
+
+-   Student's t: 86/5000 = 0.0172
+
+-   Uniform discrete: 191/5000 = 0.0382
+
+Computing fraction of significant p-values by sample size and distribution
+
+```{r fraction}
+fraction_df <- all_pvals %>%
+  group_by(distribution, n) %>%
+  summarise(
+    total = n(),
+    below_alpha = sum(p_value < alpha),
+    fraction_significant = below_alpha / total,
+    .groups = "drop"
+  )
+```
+
+**Plot 2:** the fraction of significant results as the sample size increases
+
+```{r plot2}
+ggplot(fraction_df, aes(x = n, y = fraction_significant, color = distribution)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_x_continuous(breaks = sample_sizes) +
+  labs(
+    title = "Fraction of Significant Results vs. Sample Size",
+    x = "Sample Size (n)",
+    y = "Fraction of p-values < 0.05",
+    color = "Distribution"
+  ) +
+  theme_minimal()
+
+```
+
+## Interpretation:
+
+-   Student's t distribution has the lowest fraction of significant p-values due to heavier tails of the student's t distribution with df=1 and its infinite standard deviation.
+
+-   The denominator of the t-statistic (which is the estimated standard error) gets inflated. So the t-statistic is smaller (closer to 0 than it should be). As a result even though our mean was supposed to be close to 0, we get an extreme result of significant p-value ratios around 0.02 instead of 0.05.
+
+-   Because the t-statistic is small (due to large s.e), the p-values tend to be larger than they should be.
+
+-   Smaller absolute t-statistic -\> interpret that sample mean is close to 0 -\> p-value larger.
+
+-   To sum it up, t-test can be irrelevant for distributions with very high std deviation such as Student's t distribution.
+
+# T-tests
+
+## A small clinical trial on asthma patients has been run measuring the lung function of a control group on a placebo and a treatment group on a new drug.
+
+```{r lung data}
+lung_data <- read.csv("/Users/payalpriyadarshini/Documents/Data Science_2nd sem/lung_data.csv")
+head(lung_data)
+
+```
+
+```{r boxplot}
+ggplot(lung_data, aes(x = Trial.arm, y = Lung.function, fill = Trial.arm)) +
+  geom_boxplot() +
+  labs(title = "Lung Function by Group", x = "Group", y = "Lung Function") +
+  theme_minimal()
+```
+
+```{r density}
+ggplot(lung_data, aes(x = Lung.function, fill = Trial.arm)) + 
+  geom_density(alpha = 0.5) + 
+  labs(
+    title = "Density Plot of Lung Function by Group",
+    x = "Lung Function",
+    y = "Density"
+  ) + 
+  scale_fill_manual(values = c("skyblue", "salmon")) + 
+  theme_minimal(base_size = 14) 
+```
+
+```{r histogram}
+# Histogram
+ggplot(lung_data, aes(x = Lung.function, fill = Trial.arm)) +
+  geom_histogram(binwidth = 0.4, color = "black") +
+  facet_wrap(~ Trial.arm, ncol = 2) + # Create separate panels for each Trial.arm
+  labs(title = "Distribution of Lung Measurements by Trial Arm",
+       x = "Lung Function", y = "Count", fill = "Trial Arm") +
+  theme_minimal()
+```
+
+```{r t-test}
+library(dplyr)
+t_test <- t.test(Lung.function ~ Trial.arm, data = lung_data)
+print(t_test)
+```
+
+## Statistical Analysis Report: Lung Function in Asthma Clinical Trial
+
+**Objective-** To assess whether there is a statistically significant difference in lung function between asthma patients receiving a placebo (control) and those receiving a new drug (treatment).
+
+**Data Visualization**
+
+Three visualizations were created:
+
+1.  Boxplot: Compares the lung function distributions between the control and treatment groups. The treatment group appears to have a slightly higher median lung function.
+
+2.  Histogram: Shows the distribution of lung function values within each group. It is observed that the treatment group has a bell shaped distribution and is symmetric and centered while the control group is slightly shifted to the right.
+
+3.  Density plot: The treatment group (salmon) has a rightward shift with broader spread, showcasing higher and variable lung function values. The control group (sky blue) is more peaked, with lung function values varying around a slightly lower range.
+
+**Statistical test (t-test)**
+
+A two sample t-test was conducted to compare the difference in the two independent groups and understand the significance of their difference. More specifically, a Welch's t-test was conducted as it is more robust for groups with different variances and sample sizes, and avoids presumption about the variance in the data. Results: We conducted a statistical comparison of the Lung function with the Trial arm(group), the following are the results obtained:
+
+-   t-statistic: -2.1569
+
+-   Degrees of freedom: 37.988
+
+-   p-value: 0.0374 \< 0.05
+
+-   95% Confidence Interval: [-0.630, -0.019]
+
+-   Control Mean: 10.150
+
+-   Treatment Mean: 10.475
+
+**Interpretation:**
+
+1.  P-value is less than the significance level of 0.05, hence there is a statistical difference in lung function of two groups.
+
+2.  We reject the null hypothesis and accept the alternate hypothesis of having significant difference in lung function of control and treatment.
+
+3.  From the density plot we can observe that the drug has a positive effect due to the right shift.
+
+4.  Non- zero C.I. suggests we have statistical evidence that the drug has a reliable, positive effect on lung function Mean value of Treatment is higher than control group
+
+5.  These findings support further clinical investigation and potential drug development.
+
+# Review questions
+
+Mark True or False for each of the following statements:
+
+-   p-values are used to calculate the probability of the null hypothesis given the data. **FALSE**
+
+-   The significance level alpha used in statistical hypothesis testing is the probability of rejecting the null when it is true **TRUE**
+
+-   The Central Limit Theorem only holds if the population from which we are sampling is normally distributed. **FALSE**
+
+-   As the sample size gets larger, the standard error of the sampling distribution of the sample mean gets larger as well. **FALSE**

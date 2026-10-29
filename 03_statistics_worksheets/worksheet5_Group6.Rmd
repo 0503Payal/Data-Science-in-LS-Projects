@@ -1,0 +1,101 @@
+---
+title: "worksheet05_group6"
+author: "Leon Igal Inselberg Barbut, Renk Asik, Payal Priyadarshini"
+date: "5/27/2025"
+output: pdf_document
+---
+**Task 1**
+```{r load_data, include=FALSE}
+load("CRC_Indidence_Data.RData")
+```
+```{r task_a, echo=TRUE}
+total_cancer <- sum(CRC_Incidence_Data$cancers)
+total_population <- sum(CRC_Incidence_Data$cancers) + sum(CRC_Incidence_Data$noncancers)
+overall_prob_cancer <- total_cancer / total_population
+```
+```{r fit_regression, echo=TRUE}
+# logit_transform prob. so that we can fit linear model
+
+# Fit the logistic regression model
+logistic_model <- glm(cancerstatus ~ age, data = CRC_subset_expanded, family = "binomial")
+
+summary(logistic_model)
+```
+Age: 0.08851 coefficient is statistically significant since the p-value = 0.00958. So, the age has a statistically significant positive association with the log-odds of cancer. We can reject the null hypothesis the age and cancer are unrelated. 
+```{r echo=TRUE}
+exp(0.08851)
+```
+For every increase of one year in age, the odds of having cancer is multiplied by 1.092545, which is a 9.25% increase. 
+```{r echo=TRUE}
+# Fit the logistic regression model using cbind(cancers, noncancers) as the response
+
+model_cancers_noncancers <- glm(
+  cbind(cancers, noncancers) ~ age,
+  data = CRC_subset,
+  family = "binomial"
+)
+
+summary(model_cancers_noncancers)
+```
+Interpretation of coefficients is the same as above. 
+**Null Deviance** represents the deviance of the null model (only intercept, no predictors). It shows how well the response is predicted by just its mean. A lower value indicates a better fit for null model.
+**Residual Deviance** is the deviance of the fitted model (age as predictor). It measures how well model fits data. A smaller residual deviance compared to null deviance (3.86 < 10.63) suggests that the predictor (age) explains some of the variability in the response (prob. of cancer). 
+Both values are more easily interpretable compared to values above.
+
+**What's same?:** Interpretation of intercept and age coefficients. Statistical significance measures. Model types (both logistic regression using family "binomial").
+
+**What's different?:** How response data was presented. With cbind, groups are represented instead of individual observations. Moreover, deviance values and degrees of freedom are a difference. This is because of the input data structure. In this case we have much less rows (grouped observations instead of individual), which leads to less degrees of freedom. AIC value is also different, because it's derived from the deviances.
+```{r echo=FALSE}
+model_expanded_no_intercept <- glm(cancerstatus ~ -1 + age, data = CRC_subset_expanded, family = "binomial")
+
+loglik_expanded <- logLik(logistic_model)
+loglik_expanded_no_intercept <- logLik(model_expanded_no_intercept)
+
+diff_loglik_expanded <- loglik_expanded - loglik_expanded_no_intercept
+```
+```{r}
+cat("Log-likelihood with intercept:", as.numeric(loglik_expanded), "\n")
+cat("Log-likelihood without intercept:", as.numeric(loglik_expanded_no_intercept), "\n")
+cat("Difference in log-likelihood (With - Without):", as.numeric(diff_loglik_expanded))
+```
+The log-likelihood is a measure of how well the model fits data. A higher log-likelihood suggests a better fit. The difference in log-likelihood between the models with and without intercept reflects the contribution of intercept information to the fit. 
+
+The positive difference of 23.62 shows that adding the intercept term improves the model's fit to our data. So, the model with an intercept explains our data better.
+```{r echo=TRUE}
+full_logistic_model <- glm(
+  cbind(cancers, noncancers) ~ age + sex + race + registry + year_bin,
+  data = CRC_Incidence_Data,
+  family = "binomial"
+)
+
+summary(full_logistic_model)
+```
+The huge difference between Null Deviance and Residual Deviance (633128 vs. 39601) shows that extra information (age, sex, race, registry, year_bin) explains a very large amount of variability in cancer probability.
+
+Each coefficient represents a log-odds change in cancer incidence compared to baseline group.
+
+- age: Each one year increase in age increases odds of cancer by `r exp(8.720e-02)`.
+- sexfemale: Females have lower odds of cancer by `exp(-3.330e-01)` compared to males.
+- raceblack: Black individuals have higher odds of cancer by `r exp(2.403e-01)` compared to white individuals.
+- raceother: Other race individuals have higher odds of cancer by `r exp(2.199e-02)`.
+- year_bin: Effect of time period on cancer incidence compared to baseline (1970-1975). Coefficients get smaller over time, suggesting decreasing odds of cancer over time.
+```{r echo=TRUE}
+quad_age_model <- glm(cbind(cancers, noncancers) ~ age + I(age^2) + sex + race + registry + year_bin, family = "binomial", data = CRC_Incidence_Data)
+
+summary(quad_age_model)
+```
+Interpretation: Cancer risk increases with age until a certain age. After, it has almost no effect. This could be due to other causes of death outweighing cancer after a certain age.
+```{r}
+library(visreg)
+visreg(full_logistic_model, "age", ylab="Log-Odds of Cancer", xlab="Age")
+
+
+visreg(quad_age_model, "age", ylab="Log-Odds of Cancer with Quadratic Term", xlab="Age")
+
+```
+The gray points are partial residuals: how each data point deviates from the expected log-odds. The residuals seem to decrease with the added quadratic term.
+The quadratic term allows the model to reflect the non-linear relationship between age and cancer.
+
+
+
+

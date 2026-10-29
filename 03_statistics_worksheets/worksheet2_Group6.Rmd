@@ -1,0 +1,335 @@
+---
+title: "Assignment2"
+author: "Leon Igal Inselberg Barbut, Renk Asik, Payal Priyadarshini"
+date: "4/25/2025"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## Task 1 - Post-hoc power analysis
+
+```{r}
+alpha <- 0.05
+
+lung_data <- read.csv("lung_data.csv")
+
+control_functionality <- lung_data$Lung.function[lung_data$Trial.arm=="Control"]
+treatment_functionality <- lung_data$Lung.function[lung_data$Trial.arm=="Treatment"]
+
+mean_ctrl <- mean(control_functionality)
+mean_trtmnt <- mean(treatment_functionality)
+
+sd_ctrl <- sd(control_functionality)
+sd_trtmnt <- sd(treatment_functionality)
+
+n_ctrl <- length(control_functionality)
+n_trtmnt <- length(treatment_functionality)
+
+```
+
+```{r}
+delta = (mean_trtmnt - mean_ctrl)
+d = delta/sd_ctrl
+
+power.t.test(n = n_ctrl, delta = delta, sd = sd_ctrl, sig.level = alpha, power = NULL, type = "two.sample")
+```
+
+As delta we used the difference between the mean of the treatment group and control group. We have calculated the power of the test as 0.549, meaning that the probability of selecting alternative hypothesis correctly is 55%.
+
+### Explore post-hoc power further
+
+```{r}
+set.seed(42)
+n <- 20
+sd <- 1
+
+mean_control <- 0
+mean_treatment <- 0.5
+
+n_reps <- 1000
+
+p_values <- numeric(0)
+powers <- numeric(0)
+
+for(i in 1:n_reps){
+  # Sample from normal dist
+  control_sample <- rnorm(n, mean_control, sd)
+  treatment_sample <- rnorm(n, mean_treatment, sd)
+  
+  # Compute p-value and power 
+  delta <- mean(treatment_sample) - mean(control_sample)
+  sd_control <- sd(control_sample)
+  sd_treatment <- sd(treatment_sample)
+  sd_pooled <- sqrt(((n - 1) * var(control_sample) + (n - 1) * var(treatment_sample)) / (n + n - 2)) #ChatGPT gave the formula, report 
+  
+  # 2 sample t-test
+  p_val <- t.test(control_sample, treatment_sample)$p.value
+  pow <- power.t.test(n = n, delta = delta, sd = sd_pooled, sig.level = alpha, power = NULL, type = "two.sample")$power
+  p_values <- c(p_values, p_val)
+  powers <- c(powers, pow)
+  
+}
+
+```
+
+Plot p-values against post-hoc power.
+
+```{r echo=FALSE}
+
+# Plot p-values against power
+plot(p_values, powers,
+     xlab = "P-value",
+     ylab = "Post-hoc Power",
+     main = "P-values vs Power",
+     pch = 16,
+     col = "steelblue")
+
+abline(v = 0.05, col = "red", lty = 2)  # Significance threshold
+
+
+```
+
+### Is post-hoc analysis generally a reliable measure?
+
+P-value is the probability of observing equal or more extreme statistics, assuming the null hypothesis is true. Power is the probability of correctly selecting the alternative when H1 is true.
+
+We observed that, **as the p-value increases, the post-hoc power tends to decrease**. Also, smaller p-values are associated with higher post-hoc power. This was what we expected because a smaller p-value provides stronger evidence against the null hypothesis, which aligns with a higher likelihood of rejecting null hypothesis correctly.
+
+**This close negative relationship between p-value and post-hoc power suggests that post-hoc power depends on p-value and doesn't provide much extra information**. Since it is (negatively) correlated with the p-value and the p-value only gives information about Type I Error, post-hoc power seems to be unreliable. It is better to estimate power before the experiment, while designing the study.
+
+Reference: <https://pmc.ncbi.nlm.nih.gov/articles/PMC9452450/>
+
+## Task 2 - Unequal sample sizes
+
+```{r}
+total_n <- 40
+delta <- 1
+sd <- 1
+alpha <- 0.05
+fractions <- seq(0.1, 0.9, by = 0.05)
+n_reps <- 1000
+
+fraction_of_rejected <- numeric(length(fractions))
+
+for(i in 1:length(fractions)){
+  reject_cnt <- 0
+  fraction <- fractions[i]
+  n0 <- as.integer(fraction * total_n)
+  n1 <- total_n - n0
+  for (j in 1: n_reps){
+    sample_0 <- rnorm(n0, 0, sd)
+    sample_1 <- rnorm(n1, delta, sd)
+    
+    p_value <- t.test(sample_0, sample_1)$p.value
+    if(p_value < alpha){
+      reject_cnt <- reject_cnt + 1
+    }
+  }
+  fraction_of_rejected[i] <- reject_cnt / n_reps
+}
+
+# group imbalance
+imbalance <- fractions - 0.5
+
+```
+
+Plot the fraction of rejected hypotheses as a function of the group imbalance
+
+```{r echo=FALSE}
+plot(imbalance, fraction_of_rejected, type = "o", pch = 16,         
+     col = "darkgreen", lwd = 3, cex = 1.2,
+     xlab = "Group Imbalance (fraction - 0.5)",
+     ylab = "Fraction of Rejected Hypotheses",
+     main = "Fraction of Rejected Hypotheses vs. Group Imbalance")
+grid()
+```
+
+### Optimal fraction of samples per group?
+
+As the group imbalance approaches 0 from both sides, the fraction of rejected H0 reaches it's highest value of around 0.88. Designing this experiment ourselves, we know that there is a significant difference between the means (reject H0). So the **optimal fraction of samples per group is 0.5 (i.e imbalance: 0), which results in highest fraction of rejected hypotheses, or in this case highest power**.
+
+## Task 3 - Multiple testing correction
+
+### Lung Cancer Data
+
+```{r include=FALSE}
+library(tidyverse)
+url <- paste0("https://gdac.broadinstitute.org",
+"/runs/analyses__latest/reports/cancer/",
+"LUSC-TP/MutSigNozzleReport2CV/sig_genes.txt")
+lung_cancer_df <- read_tsv(url)
+ 
+```
+
+```{r}
+# Remove rows where p-value is NA 
+lung_cancer_df_no_na <- lung_cancer_df %>%
+  filter(!is.na(p))
+
+# Bonferroni Correction
+lung_cancer_df_no_na <- lung_cancer_df_no_na %>%
+  mutate(p_bonferroni = p.adjust(p, method = "bonferroni")) # mutate adds new column
+
+# Benjamini-Hochberg Correction
+lung_cancer_df_no_na <- lung_cancer_df_no_na %>%
+  mutate(p_bh = p.adjust(p, method = "BH"))
+
+# Compare the number of significant genes per correction
+
+count_signif_p <- lung_cancer_df_no_na %>%
+  filter(p < alpha) %>%
+  tally()
+count_signif_p_bonferroni <- lung_cancer_df_no_na %>%
+  filter(p_bonferroni < alpha) %>%
+  tally()
+count_signif_p_bh <- lung_cancer_df_no_na %>%
+  filter(p_bh < alpha) %>%
+  tally()
+count_signif_q <- lung_cancer_df_no_na %>%
+  filter(q < alpha) %>%
+  tally()
+```
+
+### Compare the number of significant genes per correction with appropriate visualisation
+
+```{r echo=FALSE}
+# Create a data frame for plotting
+significant_counts_df <- data.frame(
+  Method = c("Original p-value", "Bonferroni", "Benjamini-Hochberg", "q"),
+  Count = c(count_signif_p$n, count_signif_p_bonferroni$n, count_signif_p_bh$n, count_signif_q$n)
+)
+
+# Bar chart (this code was mostly generated with AI)
+ggplot(significant_counts_df, aes(x = Method, y = Count, fill = Method)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Count), vjust = -0.3, size = 3) +
+  labs(
+    title = "Number of Significant Genes (p < 0.05) After Multiple Testing Correction",
+    x = "Correction Method",
+    y = "Number of Significant Genes",
+    fill = "Correction Method"
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+```
+
+```{r include=FALSE}
+# Do q-values match BH corrected p-values?
+
+# Limit to the first 50 rows
+df_subset <- lung_cancer_df_no_na %>% slice(1:50)
+
+tolerance <- 1e-6 # Choose an appropriate tolerance
+
+matches <- df_subset %>%
+  filter(near(p_bh, q, tol = tolerance)) %>%
+  nrow()
+
+ratio_matches <- (matches / nrow(df_subset))
+print(ratio_matches)
+```
+
+To find out if our corrected p-values match column q in the data frame, we take first 50 rows, because most of the data frame consists of corrected p-values and q-values of 1. We chose a tolerance of 1e-6 when matching.
+
+100% of the q-values and **BH** corrected p-values match, whereas for Bonferroni corrected p-values only 12% match. This finding suggests that **q-values were generated by BH correcting the p-values**. Consequently, we have good evidence to think they controlled **FDR**, but not FWER.
+
+```{r include=FALSE}
+url2 <- paste0("https://gdac.broadinstitute.org",
+"/runs/analyses__latest/reports/cancer/",
+"LUAD-TP/MutSigNozzleReport2CV/sig_genes.txt")
+lung_adenocarcinoma_df <- read_tsv(url2)
+```
+
+### Lung Adenocarcinoma Data
+
+```{r}
+# Remove rows where p-value is NA 
+lung_adenocarcinoma_df_no_na <- lung_adenocarcinoma_df %>%
+  filter(!is.na(p))
+
+# Bonferroni Correction
+lung_adenocarcinoma_df_no_na <- lung_adenocarcinoma_df_no_na %>%
+  mutate(p_bonferroni = p.adjust(p, method = "bonferroni")) # mutate adds new column
+
+# Benjamini-Hochberg Correction
+lung_adenocarcinoma_df_no_na <- lung_adenocarcinoma_df_no_na %>%
+  mutate(p_bh = p.adjust(p, method = "BH"))
+
+# Compare the number of significant genes per correction
+
+count_signif_p <- lung_adenocarcinoma_df_no_na %>%
+  filter(p < alpha) %>%
+  tally()
+count_signif_p_bonferroni <- lung_adenocarcinoma_df_no_na %>%
+  filter(p_bonferroni < alpha) %>%
+  tally()
+count_signif_p_bh <- lung_adenocarcinoma_df_no_na %>%
+  filter(p_bh < alpha) %>%
+  tally()
+count_signif_q <- lung_adenocarcinoma_df_no_na %>%
+  filter(q < alpha) %>%
+  tally()
+```
+
+### Compare the number of significant genes per correction
+
+```{r echo=FALSE}
+# Create a data frame for plotting
+significant_counts_df <- data.frame(
+  Method = c("Original p-value", "Bonferroni", "Benjamini-Hochberg", "q"),
+  Count = c(count_signif_p$n, count_signif_p_bonferroni$n, count_signif_p_bh$n, count_signif_q$n)
+)
+
+# Bar chart (this code was mostly generated with AI)
+ggplot(significant_counts_df, aes(x = Method, y = Count, fill = Method)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Count), vjust = -0.3, size = 3) +
+  labs(
+    title = "Number of Significant Genes (p < 0.05) After Multiple Testing Correction",
+    x = "Correction Method",
+    y = "Number of Significant Genes",
+    fill = "Correction Method"
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+```
+
+```{r include=FALSE}
+df_subset <- lung_adenocarcinoma_df_no_na %>% slice(1:100)
+
+tolerance <- 1e-6 # Choose an appropriate tolerance
+
+matches <- df_subset %>%
+  filter(near(p_bh, q, tol = tolerance)) %>%
+  nrow()
+
+ratio_matches <- (matches / nrow(df_subset))
+print(ratio_matches)
+```
+
+For lung adenocarcinoma data, in order to check if corrected p-values match column q in the data frame, we take first 100 rows, with same tolerance as before.
+
+100% of the q-values and **BH** corrected p-values match, whereas for Bonferroni corrected p-values only 11% match. This finding again suggests that **q-values were generated by BH correcting the p-values**. So, also for lung adenocarcinoma data, we have good evidence to think they controlled **FDR**, but not FWER.
+
+### Compare the number of significantly mutated genes between both lung cancer types
+
+```{r echo=FALSE}
+# 2x2 Table
+significant_genes_table <- matrix(c(14, 496, 40, 901), nrow = 2, byrow = TRUE)
+
+dimnames(significant_genes_table) <- list(
+  c("Lung Cancer", "Lung Adenocarcinoma"),
+  c("q-value", "p-value")
+
+)
+
+print(significant_genes_table)
+
+```
+
+**More significant genes are identified in the lung adenocarcinoma dataset** than in the lung cancer dataset, whether using p-values or q-values (according to our analysis, BH adjusted p-values).
+
+### AI Usage
+
+ChatGPT was used to generate some of the plots and to understand error messages.
